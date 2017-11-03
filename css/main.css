@@ -6,3 +6,8 @@ video {
   max-width: 100%;
   width: 480px;
 }
+
+.container {
+	width: 1000px;
+	margin: 0 auto;
+}

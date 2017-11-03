@@ -8,11 +8,13 @@ var pc;
 var remoteStream;
 var turnReady;
 
+///////////////////////////STUNS servers//////////////////////////////
 var pcConfig = {
   'iceServers': [{
     'urls': 'stun:stun.l.google.com:19302'
   }]
 };
+//////////////////////////////////////////////////////////////////////
 
 // Set up audio and video regardless of what devices are present.
 var sdpConstraints = {
@@ -20,8 +22,7 @@ var sdpConstraints = {
   offerToReceiveVideo: true
 };
 
-/////////////////////////////////////////////
-
+///////////////////////Room management////////////////////////////////
 var room = 'foo';
 // Could prompt for room name:
 // room = prompt('Enter room name:');
@@ -56,9 +57,9 @@ socket.on('joined', function(room) {
 socket.on('log', function(array) {
   console.log.apply(console, array);
 });
+//////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////
-
+/////////////////////Signaling comunication///////////////////////////
 function sendMessage(message) {
   console.log('Client sending message: ', message);
   socket.emit('message', message);
@@ -67,6 +68,7 @@ function sendMessage(message) {
 // This client receives a message
 socket.on('message', function(message) {
   console.log('Client received message:', message);
+
   if (message === 'got user media') {
     maybeStart();
   } else if (message.type === 'offer') {
@@ -87,9 +89,9 @@ socket.on('message', function(message) {
     handleRemoteHangup();
   }
 });
+//////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////
-
+//////////////////////Local video acquisition/////////////////////////
 var localVideo = document.querySelector('#localVideo');
 var remoteVideo = document.querySelector('#remoteVideo');
 
@@ -117,21 +119,59 @@ var constraints = {
 };
 
 console.log('Getting user media with constraints', constraints);
+//////////////////////////////////////////////////////////////////////
 
+//////////////////////////TURN serve//////////////////////////////////
 if (location.hostname !== 'localhost') {
   requestTurn(
     'https://computeengineondemand.appspot.com/turn?username=41784574&key=4080218913'
   );
 }
 
+function requestTurn(turnURL) {
+  var turnExists = false;
+  for (var i in pcConfig.iceServers) {
+    if (pcConfig.iceServers[i].url.substr(0, 5) === 'turn:') {
+      turnExists = true;
+      turnReady = true;
+      break;
+    }
+  }
+  if (!turnExists) {
+    console.log('Getting TURN server from ', turnURL);
+    // No TURN server. Get one from computeengineondemand.appspot.com:
+    var xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        var turnServer = JSON.parse(xhr.responseText);
+        console.log('Got TURN server: ', turnServer);
+        pcConfig.iceServers.push({
+          'url': 'turn:' + turnServer.username + '@' + turnServer.turn,
+          'credential': turnServer.password
+        });
+        turnReady = true;
+      }
+    };
+    xhr.open('GET', turnURL, true);
+    xhr.send();
+  }
+}
+//////////////////////////////////////////////////////////////////////
+
+////////////////All readdy -> start peer connection///////////////////
 function maybeStart() {
   console.log('>>>>>>> maybeStart() ', isStarted, localStream, isChannelReady);
+
+  //Check if it's all ready
   if (!isStarted && typeof localStream !== 'undefined' && isChannelReady) {
     console.log('>>>>>> creating peer connection');
+
     createPeerConnection();
     pc.addStream(localStream);
     isStarted = true;
+
     console.log('isInitiator', isInitiator);
+
     if (isInitiator) {
       doCall();
     }
@@ -141,9 +181,9 @@ function maybeStart() {
 window.onbeforeunload = function() {
   sendMessage('bye');
 };
+//////////////////////////////////////////////////////////////////////
 
-/////////////////////////////////////////////////////////
-
+/////////////////////////Functions used///////////////////////////////
 function createPeerConnection() {
   try {
     pc = new RTCPeerConnection(null);
@@ -206,36 +246,7 @@ function setLocalAndSendMessage(sessionDescription) {
 function onCreateSessionDescriptionError(error) {
   trace('Failed to create session description: ' + error.toString());
 }
-
-function requestTurn(turnURL) {
-  var turnExists = false;
-  for (var i in pcConfig.iceServers) {
-    if (pcConfig.iceServers[i].url.substr(0, 5) === 'turn:') {
-      turnExists = true;
-      turnReady = true;
-      break;
-    }
-  }
-  if (!turnExists) {
-    console.log('Getting TURN server from ', turnURL);
-    // No TURN server. Get one from computeengineondemand.appspot.com:
-    var xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState === 4 && xhr.status === 200) {
-        var turnServer = JSON.parse(xhr.responseText);
-        console.log('Got TURN server: ', turnServer);
-        pcConfig.iceServers.push({
-          'url': 'turn:' + turnServer.username + '@' + turnServer.turn,
-          'credential': turnServer.password
-        });
-        turnReady = true;
-      }
-    };
-    xhr.open('GET', turnURL, true);
-    xhr.send();
-  }
-}
-
+//
 function handleRemoteStreamAdded(event) {
   console.log('Remote stream added.');
   remoteVideo.src = window.URL.createObjectURL(event.stream);
@@ -265,9 +276,9 @@ function stop() {
   pc.close();
   pc = null;
 }
+//////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////
-
+////////////////////////Session Description///////////////////////////
 // Set Opus as the default audio codec if it's present.
 function preferOpus(sdp) {
   var sdpLines = sdp.split('\r\n');
@@ -343,3 +354,4 @@ function removeCN(sdpLines, mLineIndex) {
   sdpLines[mLineIndex] = mLineElements.join(' ');
   return sdpLines;
 }
+//////////////////////////////////////////////////////////////////////
